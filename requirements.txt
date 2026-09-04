@@ -1,0 +1,15 @@
+# Core Numerical Computing
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0
+
+# 3D Point Cloud Processing
+open3d>=0.18.0
+
+# Visualization & Plotting
+matplotlib>=3.7.0
+
+# Web Application & Dashboard
+streamlit>=1.30.0
+
+# Data Manipulation & Analysis
+pandas>=2.0.0

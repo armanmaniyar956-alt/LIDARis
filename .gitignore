@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Python packaging and distributions
+dist/
+build/
+*.egg-info/
+
+# IDE and Editor configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Streamlit temporary data & cache
+.streamlit/
+
+# Point Cloud Data & Generated Outputs
+# Raw LiDAR datasets are typically large and should not be tracked by Git
+data/sample_data/*.pcd
+data/sample_data/*.ply
+data/sample_data/*.bin
+data/sample_data/*.las
+data/sample_data/*.laz
+data/outputs/*
+!data/sample_data/.gitkeep
+!data/outputs/.gitkeep
