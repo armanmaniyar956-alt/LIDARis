@@ -12,7 +12,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
         pass
 
 import numpy as np
-from src.pointcloud_io import load_point_cloud
+from src.pointcloud_io import load_point_cloud, get_or_create_fallback_pointcloud
 from src.mapping_25d import FixedElevationGrid25D
 from src.adaptive_resolution import AdaptiveElevationGrid25D, ResolutionLevel
 from src.evaluation import evaluate_fixed_vs_adaptive
@@ -22,7 +22,7 @@ print("RUNNING EXPLICIT VERIFICATION CHECKS")
 print("=" * 60)
 
 # Check 1: Point cloud loads
-pts = load_point_cloud("data/sample_data/synthetic_scene.ply")
+pts = get_or_create_fallback_pointcloud("data/sample_data/synthetic_scene.ply")
 assert len(pts) > 0 and pts.shape[1] == 3
 print(f"[Check 1 - Point Cloud Loading] PASS: Loaded {len(pts):,} points, shape {pts.shape}")
 

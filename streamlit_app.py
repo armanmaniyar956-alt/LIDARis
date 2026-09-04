@@ -1,8 +1,7 @@
 """
-LIDARis - Root entrypoint for Streamlit application.
-Run with: streamlit run app.py
+LIDARis - Streamlit Cloud Default Entrypoint.
+Delegates to app.app.main() ensuring repository root is in sys.path.
 """
-
 import sys
 from pathlib import Path
 

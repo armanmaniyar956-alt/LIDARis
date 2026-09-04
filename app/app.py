@@ -14,9 +14,16 @@ Features:
 - Geometric Ground/Obstacle segmentation visualizer.
 """
 
+import sys
 import tempfile
 import time
 from pathlib import Path
+
+# Ensure repository root is in sys.path regardless of execution entrypoint
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -44,6 +51,10 @@ from src.visualizer import (
 
 
 def main():
+    # Ensure necessary runtime directories exist
+    Path("data/outputs").mkdir(parents=True, exist_ok=True)
+    Path("data/sample_data").mkdir(parents=True, exist_ok=True)
+
     st.set_page_config(
         page_title="LIDARis | Adaptive 2.5D LiDAR Mapping",
         page_icon="📡",
@@ -432,6 +443,7 @@ def main():
         ax_seg.grid(True, linestyle=":", alpha=0.3)
 
         seg_plot_path = Path("data/outputs/segmentation_baseline.png")
+        seg_plot_path.parent.mkdir(parents=True, exist_ok=True)
         plt.tight_layout()
         plt.savefig(str(seg_plot_path))
         plt.close(fig_seg)

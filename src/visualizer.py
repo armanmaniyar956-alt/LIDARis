@@ -20,7 +20,13 @@ from matplotlib.collections import PatchCollection
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
-import open3d as o3d
+
+try:
+    import open3d as o3d
+    HAS_OPEN3D = True
+except (ImportError, Exception):
+    o3d = None
+    HAS_OPEN3D = False
 
 from src.pointcloud_io import numpy_to_o3d
 
@@ -51,7 +57,7 @@ def colorize_by_elevation(
 
 
 def display_point_cloud_open3d(
-    points_or_pcd: Union[np.ndarray, o3d.geometry.PointCloud],
+    points_or_pcd: Any,
     window_name: str = "LIDARis - 3D LiDAR Viewer",
     color_by_elevation: bool = True,
     point_size: float = 3.0,
@@ -61,6 +67,10 @@ def display_point_cloud_open3d(
     """
     Open an interactive 3D viewer window using Open3D.
     """
+    if not HAS_OPEN3D or o3d is None:
+        print("[Warning] Open3D is not available in this environment; 3D viewer cannot be launched.")
+        return False
+
     if isinstance(points_or_pcd, np.ndarray):
         colors = colorize_by_elevation(points_or_pcd) if color_by_elevation else None
         pcd = numpy_to_o3d(points_or_pcd, colors=colors)

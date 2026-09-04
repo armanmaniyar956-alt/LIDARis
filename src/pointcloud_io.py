@@ -11,25 +11,27 @@ Capabilities:
 """
 
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Any
 import numpy as np
-import open3d as o3d
+
+try:
+    import open3d as o3d
+    HAS_OPEN3D = True
+except (ImportError, Exception):
+    o3d = None
+    HAS_OPEN3D = False
 
 
 def numpy_to_o3d(
     points: np.ndarray,
     colors: Optional[np.ndarray] = None
-) -> o3d.geometry.PointCloud:
+) -> Any:
     """
     Convert an (N, 3) NumPy array to an Open3D PointCloud object.
-
-    Args:
-        points: (N, 3) array of X, Y, Z coordinates.
-        colors: Optional (N, 3) array of RGB color values in range [0, 1].
-
-    Returns:
-        o3d.geometry.PointCloud: The Open3D geometry object.
     """
+    if not HAS_OPEN3D or o3d is None:
+        raise RuntimeError("Open3D is not available in the current environment.")
+
     if points.ndim != 2 or points.shape[1] < 3:
         raise ValueError(f"Expected points array of shape (N, 3) or (N, >=3), got {points.shape}")
 
@@ -48,11 +50,94 @@ def numpy_to_o3d(
     return pcd
 
 
-def o3d_to_numpy(pcd: o3d.geometry.PointCloud) -> np.ndarray:
+def o3d_to_numpy(pcd: Any) -> np.ndarray:
     """
     Extract (N, 3) coordinates from an Open3D PointCloud as a NumPy array.
     """
+    if not HAS_OPEN3D or o3d is None:
+        raise RuntimeError("Open3D is not available in the current environment.")
     return np.asarray(pcd.points)
+
+
+def _read_ply_fallback(path: Path) -> np.ndarray:
+    """
+    Pure-Python / NumPy fallback reader for PLY point clouds (ASCII and binary little-endian).
+    Ensures .ply files can be parsed even when Open3D is unavailable.
+    """
+    with open(str(path), "rb") as f:
+        header_lines = []
+        while True:
+            raw_line = f.readline()
+            if not raw_line:
+                break
+            line = raw_line.decode("ascii", errors="ignore").strip()
+            header_lines.append(line)
+            if line == "end_header":
+                break
+
+    is_binary = any("binary_little_endian" in l for l in header_lines)
+    is_ascii = any("format ascii" in l for l in header_lines)
+    vertex_count = 0
+    properties = []
+    in_vertex = False
+
+    for l in header_lines:
+        parts = l.split()
+        if len(parts) >= 3 and parts[0] == "element" and parts[1] == "vertex":
+            vertex_count = int(parts[2])
+            in_vertex = True
+        elif parts and parts[0] == "element" and parts[1] != "vertex":
+            in_vertex = False
+        elif in_vertex and len(parts) >= 3 and parts[0] == "property":
+            properties.append((parts[1], parts[2]))
+
+    if vertex_count == 0:
+        raise ValueError(f"No vertices found in PLY file {path.name}")
+
+    if is_ascii:
+        with open(str(path), "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+        header_end_idx = 0
+        for i, l in enumerate(lines):
+            if l.strip() == "end_header":
+                header_end_idx = i + 1
+                break
+        data_lines = lines[header_end_idx:header_end_idx + vertex_count]
+        points = np.array([[float(v) for v in dl.split()[:3]] for dl in data_lines], dtype=np.float64)
+        return points
+
+    elif is_binary:
+        type_map = {
+            "float": np.float32, "float32": np.float32,
+            "double": np.float64, "float64": np.float64,
+            "uchar": np.uint8, "uint8": np.uint8,
+            "int": np.int32, "int32": np.int32
+        }
+        with open(str(path), "rb") as f:
+            content = f.read()
+
+        end_hdr = b"end_header\n"
+        idx = content.find(end_hdr)
+        if idx != -1:
+            raw_payload = content[idx + len(end_hdr):]
+        else:
+            end_hdr_crlf = b"end_header\r\n"
+            idx = content.find(end_hdr_crlf)
+            raw_payload = content[idx + len(end_hdr_crlf):]
+
+        prop_types = [p[0] for p in properties]
+        # Fast path: only x, y, z
+        if len(properties) >= 3 and all(p[1] in ["x", "y", "z"] for p in properties[:3]):
+            dtype = np.float64 if "double" in prop_types[0] or "float64" in prop_types[0] else np.float32
+            if len(properties) == 3:
+                return np.frombuffer(raw_payload, dtype=dtype, count=vertex_count * 3).reshape(vertex_count, 3).astype(np.float64)
+            else:
+                # Vertex has extra fields; use structured dtype
+                dt = np.dtype([(p[1], type_map.get(p[0], np.float32)) for p in properties])
+                rec = np.frombuffer(raw_payload, dtype=dt, count=vertex_count)
+                return np.column_stack([rec["x"], rec["y"], rec["z"]]).astype(np.float64)
+
+    raise ValueError(f"Unsupported PLY encoding in {path.name}")
 
 
 def load_point_cloud(file_path: Union[str, Path]) -> np.ndarray:
@@ -83,10 +168,19 @@ def load_point_cloud(file_path: Union[str, Path]) -> np.ndarray:
     suffix = path.suffix.lower()
 
     if suffix in [".ply", ".pcd"]:
-        pcd = o3d.io.read_point_cloud(str(path))
-        if pcd.is_empty():
-            raise ValueError(f"Point cloud at {path.name} contains zero points or could not be parsed.")
-        points = np.asarray(pcd.points, dtype=np.float64)
+        if HAS_OPEN3D and o3d is not None:
+            try:
+                pcd = o3d.io.read_point_cloud(str(path))
+                if not pcd.is_empty():
+                    return np.asarray(pcd.points, dtype=np.float64)
+            except Exception:
+                pass
+
+        if suffix == ".ply":
+            return _read_ply_fallback(path)
+        raise ValueError(
+            f"Loading '{path.name}' requires Open3D which is not available in this environment."
+        )
 
     elif suffix == ".bin":
         # KITTI and standard LiDAR binary files store consecutive float32 values
@@ -142,8 +236,19 @@ def save_point_cloud(
     suffix = path.suffix.lower()
 
     if suffix in [".ply", ".pcd"]:
-        pcd = numpy_to_o3d(points, colors=colors)
-        return o3d.io.write_point_cloud(str(path), pcd)
+        if HAS_OPEN3D and o3d is not None:
+            pcd = numpy_to_o3d(points, colors=colors)
+            return o3d.io.write_point_cloud(str(path), pcd)
+        elif suffix == ".ply":
+            # Pure-Python ASCII PLY writer fallback
+            with open(str(path), "w", encoding="utf-8") as f:
+                f.write(f"ply\nformat ascii 1.0\nelement vertex {len(points)}\n")
+                f.write("property double x\nproperty double y\nproperty double z\nend_header\n")
+                for pt in points:
+                    f.write(f"{pt[0]:.6f} {pt[1]:.6f} {pt[2]:.6f}\n")
+            return True
+        else:
+            raise ValueError(f"Saving format '{suffix}' requires Open3D which is not available.")
 
     elif suffix == ".bin":
         # Save as float32 [x, y, z, 0.0] to mirror KITTI format
@@ -215,13 +320,20 @@ def get_or_create_fallback_pointcloud(
     output_path: Union[str, Path] = "data/sample_data/synthetic_scene.ply"
 ) -> np.ndarray:
     """
-    Retrieve the fallback synthetic point cloud. If it does not exist on disk,
-    generate it and save it to the specified path.
+    Retrieve the fallback synthetic point cloud. If it exists on disk, load it;
+    otherwise generate the deterministic scene and attempt to cache it to disk.
+    Guaranteed to return valid (N, 3) point data without crashing.
     """
     path = Path(output_path)
     if path.exists():
-        return load_point_cloud(path)
+        try:
+            return load_point_cloud(path)
+        except Exception as e:
+            print(f"[Warning] Could not load fallback point cloud from {path}: {e}")
 
     points = generate_synthetic_lidar_scene()
-    save_point_cloud(path, points)
+    try:
+        save_point_cloud(path, points)
+    except Exception as e:
+        print(f"[Warning] Could not cache fallback point cloud to {path}: {e}")
     return points

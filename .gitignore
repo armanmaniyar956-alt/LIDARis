@@ -32,4 +32,7 @@ data/sample_data/*.las
 data/sample_data/*.laz
 data/outputs/*
 !data/sample_data/.gitkeep
+!data/sample_data/synthetic_scene.ply
+!data/sample_data/synthetic_scene.pcd
+!data/sample_data/synthetic_scene.bin
 !data/outputs/.gitkeep
